@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    environment {
+        PROJECT_DIR = ''
+    }
+
     stages {
         stage('Checkout') {
             steps {
@@ -8,13 +12,29 @@ pipeline {
             }
         }
 
-        stage('Test') {
+        stage('Detect Project Directory') {
             steps {
                 script {
-                    if (isUnix()) {
-                        sh './mvnw clean test'
+                    if (fileExists('pom.xml')) {
+                        env.PROJECT_DIR = '.'
+                    } else if (fileExists('java/pom.xml')) {
+                        env.PROJECT_DIR = 'java'
                     } else {
-                        bat 'mvnw.cmd clean test'
+                        error('No supported build file found. Add pom.xml or build.gradle[.kts].')
+                    }
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                dir(env.PROJECT_DIR) {
+                    script {
+                        if (isUnix()) {
+                            sh './mvnw clean test'
+                        } else {
+                            bat 'mvnw.cmd clean test'
+                        }
                     }
                 }
             }
@@ -22,11 +42,13 @@ pipeline {
 
         stage('Build') {
             steps {
-                script {
-                    if (isUnix()) {
-                        sh './mvnw clean package -DskipTests'
-                    } else {
-                        bat 'mvnw.cmd clean package -DskipTests'
+                dir(env.PROJECT_DIR) {
+                    script {
+                        if (isUnix()) {
+                            sh './mvnw clean package -DskipTests'
+                        } else {
+                            bat 'mvnw.cmd clean package -DskipTests'
+                        }
                     }
                 }
             }
@@ -34,7 +56,9 @@ pipeline {
 
         stage('Archive Artifact') {
             steps {
-                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                dir(env.PROJECT_DIR) {
+                    archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                }
             }
         }
     }
